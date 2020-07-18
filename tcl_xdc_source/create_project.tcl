@@ -36,18 +36,34 @@ set_property -dict [list CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {2.4} CONFIG.PCW_EN
 make_bd_pins_external  [get_bd_pins processing_system7_0/FCLK_CLK0]
 set_property NAME phone_clk [get_bd_ports /FCLK_CLK0_0]
 
-# добавляем внешние порты для микрофона и ФНЧ фильтра
-create_bd_port -dir I phone_data
-create_bd_port -dir O PWM_Sound
-create_bd_port -dir O Mute_Sound
-create_bd_port -dir I Mute_control
+# добавляем сигнал сброса для PL
+set_property -dict [list CONFIG.PCW_EN_RST0_PORT {1}] [get_bd_cells processing_system7_0]
 
 # добаляем SD MIO для для работы с SD картой
 set_property -dict [list CONFIG.PCW_SD0_PERIPHERAL_ENABLE {1} CONFIG.PCW_SD0_GRP_CD_ENABLE {1} CONFIG.PCW_SD0_GRP_CD_IO {MIO 47}] [get_bd_cells processing_system7_0]
 
+# добавляем rtl блоки в block design
+create_bd_cell -type module -reference PWM_Decoder PWM_Decoder_0
+create_bd_cell -type module -reference PWM_Encoder PWM_Encoder_0
+
+# добавляем внешние порты для микрофона и ФНЧ фильтра
+create_bd_port -dir I phone_data
+create_bd_port -dir O PWM_Sound
+create_bd_port -dir O Mute_Sound
+
+# подключение сигналов rtl блоков
+connect_bd_net [get_bd_ports phone_data]           [get_bd_pins PWM_Decoder_0/PWM_DATA]
+connect_bd_net [get_bd_pins PWM_Decoder_0/RESET_N] [get_bd_pins processing_system7_0/FCLK_RESET0_N] 
+connect_bd_net [get_bd_pins PWM_Decoder_0/CLK]     [get_bd_pins processing_system7_0/FCLK_CLK0]
+
+connect_bd_net [get_bd_pins PWM_Encoder_0/CLK]     [get_bd_pins processing_system7_0/FCLK_CLK0]
+connect_bd_net [get_bd_pins PWM_Encoder_0/RESET_N] [get_bd_pins processing_system7_0/FCLK_RESET0_N]
+connect_bd_net [get_bd_ports PWM_Sound]            [get_bd_pins PWM_Encoder_0/PWM_DATA]
+
 # временные соединения
-connect_bd_net [get_bd_ports phone_data] [get_bd_ports PWM_Sound]
-connect_bd_net [get_bd_ports Mute_control] [get_bd_ports Mute_Sound]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_0
+connect_bd_net [get_bd_ports Mute_Sound] [get_bd_pins xlconstant_0/dout]
+connect_bd_net [get_bd_pins PWM_Encoder_0/INPUT_DATA] [get_bd_pins PWM_Decoder_0/DECODED_DATA]
 
 # проверяем, сохраняем и закрываем block design
 validate_bd_design
