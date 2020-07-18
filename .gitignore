@@ -1,0 +1,12 @@
+*
+!.gitignore
+
+!tcl_xdc_source
+!tcl_xdc_source/*.tcl
+!tcl_xdc_source/*.xdc
+!hdl_source
+!hdl_source/*.vhd
+
+!arm_code
+!arm_code/*.c
+
