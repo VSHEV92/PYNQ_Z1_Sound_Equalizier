@@ -13,9 +13,10 @@
 !hls_source/*.h
 !hls_source/*.zip
 
-!arm_code
-!arm_code/*.c
-
 !matlab_source
 !matlab_source/*
 
+!arm_code
+!arm_code/*.c
+
+!zynq_bd_wrapper.xsa
