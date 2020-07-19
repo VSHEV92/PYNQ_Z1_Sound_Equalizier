@@ -4,8 +4,14 @@
 !tcl_xdc_source
 !tcl_xdc_source/*.tcl
 !tcl_xdc_source/*.xdc
+
 !hdl_source
 !hdl_source/*.vhd
+
+!hls_source
+!hls_source/*.cpp
+!hls_source/*.h
+!hls_source/*.zip
 
 !arm_code
 !arm_code/*.c
