@@ -28,12 +28,15 @@ constant clk_cycles_per_sample : integer := 100;
 constant indata_min : integer := -80;
 constant indata_max : integer := 80;
 
-signal indata_val   : integer;
+signal indata_val   : integer := 0;
 signal clk          : STD_LOGIC := '0';
 signal reset_n      : STD_LOGIC := '0';
 signal pwm_data     : STD_LOGIC;
 signal input_data   : STD_LOGIC_VECTOR (7 downto 0);  
 signal decoded_data : STD_LOGIC_VECTOR (7 downto 0);  
+
+signal sigma_delta_out  : STD_LOGIC := '0';
+signal sigma_delta_integr   : integer := 0;
 
 begin
 
@@ -55,17 +58,33 @@ begin
     end loop; 
 end process;
 
+sigma_delta_mod: process
+begin
+    if sigma_delta_out = '1' then
+        sigma_delta_integr <= sigma_delta_integr + indata_val - indata_max;
+    else
+        sigma_delta_integr <= sigma_delta_integr + indata_val - indata_min;
+    end if;
+    
+    if sigma_delta_integr > 0 then
+        sigma_delta_out <= '1';
+    else
+        sigma_delta_out <= '0';
+    end if;
+    wait for clk_period;
+end process;
+
 Encoder: PWM_Encoder
 Port Map( CLK          => clk,
           RESET_N      => reset_n,
-          INPUT_DATA   => input_data,
+          INPUT_DATA   => decoded_data,
           PWM_DATA     => pwm_data      
          );
 
 Decoder: PWM_Decoder
 Port Map( CLK          => clk,
           RESET_N      => reset_n,
-          PWM_DATA     => pwm_data,
+          PWM_DATA     => sigma_delta_out,
           DECODED_DATA => decoded_data      
          );
 
