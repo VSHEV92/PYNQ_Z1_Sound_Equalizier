@@ -18,5 +18,9 @@
 
 !arm_code
 !arm_code/*.c
+!arm_code/*.h
+
+!python_source
+!python_source/*.py
 
 !zynq_bd_wrapper.xsa
