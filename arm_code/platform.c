@@ -1,4 +1,5 @@
 #include "xscugic.h"
+#include "xscutimer.h"
 #include "xuartps.h"
 #include "xgpio.h"
 #include "xparameters.h"
@@ -12,6 +13,19 @@ void init_intr(XScuGic* IntrInstPtr){
 
 	Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_INT, (Xil_ExceptionHandler) XScuGic_InterruptHandler,	IntrInstPtr);
 	Xil_ExceptionEnable();
+}
+
+// инициализация таймера для получения отсчетов через GPIO
+void init_timer(XScuTimer* TimerInstancePtr){
+
+	XScuTimer_Config *ConfigPtr;
+	ConfigPtr = XScuTimer_LookupConfig(XPAR_PS7_SCUTIMER_0_DEVICE_ID);
+	XScuTimer_CfgInitialize(TimerInstancePtr, ConfigPtr, ConfigPtr->BaseAddr);
+	XScuTimer_EnableAutoReload(TimerInstancePtr);
+
+    // устанавливаем частоту дискретизации в 24000 кГц
+	int TimerLoadValue =  XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ/2/24000;
+	XScuTimer_LoadTimer(TimerInstancePtr, TimerLoadValue);
 }
 
 // инициализация UART контроллера
@@ -38,8 +52,8 @@ void init_UART(XUartPs* InstPtr){
 void init_GPIO_Out(XGpio* InstPtr){
 	XGpio_Initialize(InstPtr, XPAR_AXI_GPIO_1_DEVICE_ID);
 	// первый канал данные для блока фильтрации, второй - для управления мультплексором
-	XGpio_DiscreteSet(InstPtr, 1, 0);
-	XGpio_DiscreteSet(InstPtr, 2, 0); // данные идут от микрофона
+	XGpio_DiscreteWrite(InstPtr, 1, 0);
+	XGpio_DiscreteWrite(InstPtr, 2, 0); // данные идут от микрофона
 }
 
 // инициализация GPIO для входных данных

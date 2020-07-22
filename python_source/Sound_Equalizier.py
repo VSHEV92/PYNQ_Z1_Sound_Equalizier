@@ -1,11 +1,32 @@
 import tkinter as tk
 from tkinter import ttk
 
+from threading import Thread
+from time import sleep
+
 class Sound_Equalizier:
+    def Record_Thread(self):
+        while True:
+            sleep(0.3)
+            if self.record_threads_stop: break
+            self.recorded_blocks_var.set(self.recorded_blocks_var.get() + 1)
+            self.rec_blocks['text'] = str(self.recorded_blocks_var.get())
+
+    def Play_Thread(self):
+        while True:
+            sleep(0.1)
+            if self.start_threads_stop: break
+            self.current_block_var.set(self.current_block_var.get() + 1)
+            if self.current_block_var.get() > int(self.play_blocks_var.get()):
+                self.current_block_var.set(0)
+            self.cur_blocks['text'] = str(self.current_block_var.get())
+            
 
     def radiobutton_command(self):
         # обработчик события для Radiobutton
-        pass
+        self.uart_socket.Serial_Port.write(bytes([254]))
+        self.uart_socket.Serial_Port.write(bytes([self.rb_var.get()]))
+        self.uart_socket.Serial_Port.write(bytes(5))
 
     def scale_command(self, *args):
         # обработчик команд Scale
@@ -21,8 +42,62 @@ class Sound_Equalizier:
         self.ll['text'] = str(int(lpf_gian/self.max_scale*100)) + '%'
         self.lb['text'] = str(int(bpf_gian/self.max_scale*100)) + '%'
         self.lh['text'] = str(int(hpf_gian/self.max_scale*100)) + '%'
+
+    def Record_Button_Pressed(self):
+        if self.Play_Button['state'] == '!disabled':
+            self.Play_Button['state'] = 'disabled'
+            self.Record_Button['text'] = 'Stop'
+            self.recorded_blocks_var.set(0)
+            # запускаем поток для считывания числа записанных блоков
+            self.record_threads_stop = False
+            self.run_thread = Thread(target = self.Record_Thread)
+            self.run_thread.setDaemon(True)
+            self.run_thread.start()
+            # посылаем флаг начала записи
+##            self.uart_socket.Serial_Port.write(bytes([253]))
+##            self.uart_socket.Serial_Port.write(bytes([1]))
+##            self.uart_socket.Serial_Port.write(bytes(5))
+        else:
+            self.Play_Button['state'] = '!disabled'
+            self.Record_Button['text'] = 'Record'
+            # останавливаем поток для считывания числа записанных блоков
+            self.record_threads_stop = True
+            sleep(0.1)
+            self.run_thread.join()
+            # посылаем окончания начала записи
+##            self.uart_socket.Serial_Port.write(bytes([253]))
+##            self.uart_socket.Serial_Port.write(bytes([0]))
+##            self.uart_socket.Serial_Port.write(bytes(5))
+        
+
+    def Play_Button_Pressed(self):
+        if self.Record_Button['state'] == '!disabled':
+            self.Record_Button['state'] = 'disabled'
+            self.Play_Button['text'] = 'Stop'
+            self.current_block_var.set(0)
+            # запускаем поток для считывания числа записанных блоков
+            self.start_threads_stop = False
+            self.run_thread = Thread(target = self.Play_Thread)
+            self.run_thread.setDaemon(True)
+            self.run_thread.start()
+        else:
+            self.Record_Button['state'] = '!disabled'
+            self.Play_Button['text'] = 'Play'
+            # останавливаем поток для считывания числа записанных блоков
+            self.start_threads_stop = True
+            sleep(0.1)
+            self.run_thread.join()
         
     def __init__(self, master, uart_socket):
+
+        self.record_threads_stop = False
+        self.start_threads_stop = False
+
+        self.current_block_var = tk.IntVar()
+        self.current_block_var.set(0)
+
+        self.recorded_blocks_var = tk.IntVar()
+        self.recorded_blocks_var.set(0)
 
         self.uart_socket = uart_socket
         
@@ -65,7 +140,29 @@ class Sound_Equalizier:
         ttk.Label(self.scale_f, text = '4 - 8\nMHz').grid(padx = 10, row = 2, column = 1)
         ttk.Label(self.scale_f, text = '8 - 12\n MHz').grid(padx = 10, row = 2, column = 2)
         
-         
+        # создаем Frame для управления sdcard
+        self.sdcard_f = ttk.Frame(self.f, width = 40, height = 200)
+        self.sdcard_f.pack(padx = 20, pady = 10)
+
+        ttk.Label(self.sdcard_f, text = 'Recorded Blocks:').grid(padx = 10, row = 0, column = 0)
+        self.rec_blocks = ttk.Label(self.sdcard_f, text = '0')
+        self.rec_blocks.grid(padx = 10, row = 0, column = 1)
+        
+        ttk.Label(self.sdcard_f, text = 'Current Block:').grid(padx = 10, row = 1, column = 0)
+        self.cur_blocks = ttk.Label(self.sdcard_f, text = '0')
+        self.cur_blocks.grid(padx = 10, row = 1, column = 1)
+
+        self.play_blocks_var = tk.StringVar()
+        self.play_blocks_var.set('1000')
+        ttk.Label(self.sdcard_f, text = 'Blocks to play:').grid(padx = 10, row = 2, column = 0)
+        self.play_blocks = ttk.Entry(self.sdcard_f, textvariable = self.play_blocks_var, width = 10, justify = 'center').grid(padx = 10, row = 2, column = 1)
+
+        self.Record_Button = ttk.Button(self.sdcard_f, text = 'Record', state = '!disabled', command = self.Record_Button_Pressed)
+        self.Record_Button.grid(pady = 12, padx = 15, row = 3, column = 0)
+
+        self.Play_Button = ttk.Button(self.sdcard_f, text = 'Play', state = '!disabled', command = self.Play_Button_Pressed)
+        self.Play_Button.grid(pady = 12, padx = 15, row = 3, column = 1)
+        
     def get_frame(self):
         # метод возвращает Frame
         return self.f
