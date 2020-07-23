@@ -2,6 +2,7 @@
 #include "xscutimer.h"
 #include "xuartps.h"
 #include "xgpio.h"
+#include "xsdps.h"
 #include "xparameters.h"
 #include "xsound_equalizier.h"
 
@@ -23,11 +24,18 @@ void init_timer(XScuTimer* TimerInstancePtr){
 	XScuTimer_CfgInitialize(TimerInstancePtr, ConfigPtr, ConfigPtr->BaseAddr);
 	XScuTimer_EnableAutoReload(TimerInstancePtr);
 
-    // устанавливаем частоту дискретизации в 24000 кГц
+    // устанавливаем частоту дискретизации в 24000 Гц
 	int TimerLoadValue =  XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ/2/24000;
 	XScuTimer_LoadTimer(TimerInstancePtr, TimerLoadValue);
 }
 
+// инициализация SD Card
+void init_SDCard(XSdPs* InstancePtr){
+    XSdPs_Config *SD_ConfigPtr;
+	SD_ConfigPtr = XSdPs_LookupConfig(XPAR_PS7_SD_0_DEVICE_ID);
+	XSdPs_CfgInitialize(InstancePtr, SD_ConfigPtr, SD_ConfigPtr->BaseAddress);
+	XSdPs_CardInitialize(InstancePtr);
+}
 // инициализация UART контроллера
 void init_UART(XUartPs* InstPtr){
 	XUartPs_Config *Uart_Config;

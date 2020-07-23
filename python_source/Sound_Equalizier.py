@@ -7,19 +7,17 @@ from time import sleep
 class Sound_Equalizier:
     def Record_Thread(self):
         while True:
-            sleep(0.3)
+            s = self.uart_socket.Serial_Port.read(2)
+            s = int.from_bytes(s, byteorder='little', signed=False)
             if self.record_threads_stop: break
-            self.recorded_blocks_var.set(self.recorded_blocks_var.get() + 1)
-            self.rec_blocks['text'] = str(self.recorded_blocks_var.get())
+            self.rec_blocks['text'] = str(s)
 
     def Play_Thread(self):
         while True:
-            sleep(0.1)
+            s = self.uart_socket.Serial_Port.read(2)
+            s = int.from_bytes(s, byteorder='little', signed=False)
             if self.start_threads_stop: break
-            self.current_block_var.set(self.current_block_var.get() + 1)
-            if self.current_block_var.get() > int(self.play_blocks_var.get()):
-                self.current_block_var.set(0)
-            self.cur_blocks['text'] = str(self.current_block_var.get())
+            self.cur_blocks['text'] = str(s)
             
 
     def radiobutton_command(self):
@@ -54,9 +52,9 @@ class Sound_Equalizier:
             self.run_thread.setDaemon(True)
             self.run_thread.start()
             # посылаем флаг начала записи
-##            self.uart_socket.Serial_Port.write(bytes([253]))
-##            self.uart_socket.Serial_Port.write(bytes([1]))
-##            self.uart_socket.Serial_Port.write(bytes(5))
+            self.uart_socket.Serial_Port.write(bytes([253]))
+            self.uart_socket.Serial_Port.write(bytes([1]))
+            self.uart_socket.Serial_Port.write(bytes(5))
         else:
             self.Play_Button['state'] = '!disabled'
             self.Record_Button['text'] = 'Record'
@@ -65,9 +63,9 @@ class Sound_Equalizier:
             sleep(0.1)
             self.run_thread.join()
             # посылаем окончания начала записи
-##            self.uart_socket.Serial_Port.write(bytes([253]))
-##            self.uart_socket.Serial_Port.write(bytes([0]))
-##            self.uart_socket.Serial_Port.write(bytes(5))
+            self.uart_socket.Serial_Port.write(bytes([253]))
+            self.uart_socket.Serial_Port.write(bytes([0]))
+            self.uart_socket.Serial_Port.write(bytes(5))
         
 
     def Play_Button_Pressed(self):
@@ -80,6 +78,14 @@ class Sound_Equalizier:
             self.run_thread = Thread(target = self.Play_Thread)
             self.run_thread.setDaemon(True)
             self.run_thread.start()
+            # посылаем флаг начала записи
+            self.uart_socket.Serial_Port.write(bytes([251]))
+            self.uart_socket.Serial_Port.write(int(self.play_blocks_var.get()).to_bytes(2, byteorder='big', signed = False))
+            self.uart_socket.Serial_Port.write(bytes(4))
+            sleep(0.1)
+            self.uart_socket.Serial_Port.write(bytes([252]))
+            self.uart_socket.Serial_Port.write(bytes([1]))
+            self.uart_socket.Serial_Port.write(bytes(5))
         else:
             self.Record_Button['state'] = '!disabled'
             self.Play_Button['text'] = 'Play'
@@ -87,6 +93,9 @@ class Sound_Equalizier:
             self.start_threads_stop = True
             sleep(0.1)
             self.run_thread.join()
+            self.uart_socket.Serial_Port.write(bytes([252]))
+            self.uart_socket.Serial_Port.write(bytes([0]))
+            self.uart_socket.Serial_Port.write(bytes(5))
         
     def __init__(self, master, uart_socket):
 
