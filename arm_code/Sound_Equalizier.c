@@ -16,15 +16,10 @@ XSound_equalizier Equalizier;
 
 // SD Card
 #define SD_Block_Size 512
-u16 TransferMode;
-#define ADDRESS_BEYOND_32BIT	0x100000000U
-s32 XSdPs_Write(XSdPs *InstancePtr, u32 Arg, u32 BlkCnt, const u8 *Buff);
-s32 XSdPs_Read(XSdPs *InstancePtr, u32 Arg, u32 BlkCnt, u8 *Buff);
 u8 SD_Ping_Buffer[512];
 u8 SD_Pong_Buffer[512];
+u8* SD_Addr;
 u8 Ping_Pong_Flag = 0;
-
-u8 Test_Buffer[512];
 
 // входной буфер для UART
 static u8 Uart_RX_Buffer[7];
@@ -56,10 +51,12 @@ void Timer_Handler(XScuTimer * TimerInstance)
 			Sample_Count = 0;
             // записываем блок в sd card
 			if (Ping_Pong_Flag == 0){
-				XSdPs_Write(&SD_Card, SD_Block_Count*SD_Block_Size, 1, SD_Ping_Buffer);
+				SD_Addr = SD_Ping_Buffer;
+				SD_Write = 1;
 				Ping_Pong_Flag = 1;
 			} else {
-				XSdPs_Write(&SD_Card, SD_Block_Count*SD_Block_Size, 1, SD_Pong_Buffer);
+				SD_Addr = SD_Pong_Buffer;
+				SD_Write = 1;
 				Ping_Pong_Flag = 0;
 			}
 			SD_Block_Count++;
@@ -83,10 +80,12 @@ void Timer_Handler(XScuTimer * TimerInstance)
 				SD_Block_Count = 0;
 			// считываем следующий блок из SD
 			if (Ping_Pong_Flag == 0){
-				XSdPs_Read(&SD_Card, SD_Block_Count*SD_Block_Size, 1, SD_Ping_Buffer);
+				SD_Addr = SD_Ping_Buffer;
+				SD_Read = 1;
 				Ping_Pong_Flag = 1;
 			} else {
-				XSdPs_Read(&SD_Card, SD_Block_Count*SD_Block_Size, 1, SD_Pong_Buffer);
+				SD_Addr = SD_Pong_Buffer;
+				SD_Read = 1;
 				Ping_Pong_Flag = 0;
 			}
 			XUartPs_Send(&Uart_Port, (u8*)(&SD_Block_Count), 2);
@@ -133,8 +132,8 @@ void Uart_Intr_Handler(void *CallBackRef, u32 Event, unsigned int EventData)
 		    Play_Flag = Uart_RX_Buffer[1];
 		    Sample_Count = 0;
 		    Ping_Pong_Flag = 0;
-		    XSdPs_Read(&SD_Card, 0*SD_Block_Size, 1, SD_Ping_Buffer);
-		    XSdPs_Read(&SD_Card, 1*SD_Block_Size, 1, SD_Pong_Buffer);
+		    XSdPs_ReadPolled(&SD_Card, 0*SD_Block_Size, 1, SD_Ping_Buffer);
+		    XSdPs_ReadPolled(&SD_Card, 1*SD_Block_Size, 1, SD_Pong_Buffer);
 		    SD_Block_Count = 1;
 		// число циклически считываемых блоков
 	    } else if (Uart_RX_Buffer[0] == 251){
@@ -180,198 +179,18 @@ int main(){
 	// запускаем таймер
 	XScuTimer_Start(&Sample_Timer);
 
-	for(int i = 0; i<256; i++){
-		Test_Buffer[i] = i;
-		Test_Buffer[256+i] = i;
+	while(1){
+
+		if (SD_Write == 1) {
+			XSdPs_WritePolled(&SD_Card, SD_Block_Count*SD_Block_Size, 1, SD_Addr);
+			SD_Write = 0;
 		}
 
-	while(1){
+		if (SD_Read == 1) {
+			XSdPs_ReadPolled(&SD_Card, SD_Block_Count*SD_Block_Size, 1, SD_Addr);
+			SD_Read = 0;
+		}
 	}
 
 	return 0;
-}
-
-/*****************************************************************************/
-/**
-* This function performs SD write in polled mode.
-*
-* @param	InstancePtr is a pointer to the instance to be worked on.
-* @param	Arg is the address passed by the user that is to be sent as
-* 		argument along with the command.
-* @param	BlkCnt - Block count passed by the user.
-* @param	Buff - Pointer to the data buffer for a DMA transfer.
-*
-* @return
-* 		- XST_SUCCESS if initialization was successful
-* 		- XST_FAILURE if failure - could be because another transfer
-* 		is in progress or command or data inhibit is set
-*
-******************************************************************************/
-s32 XSdPs_Write(XSdPs *InstancePtr, u32 Arg, u32 BlkCnt, const u8 *Buff)
-{
-	s32 Status;
-	u32 PresentStateReg;
-	u32 StatusReg;
-
-	if ((InstancePtr->HC_Version != XSDPS_HC_SPEC_V3) ||
-				((InstancePtr->Host_Caps & XSDPS_CAPS_SLOT_TYPE_MASK)
-				!= XSDPS_CAPS_EMB_SLOT)) {
-		if(InstancePtr->Config.CardDetect != 0U) {
-			/* Check status to ensure card is initialized */
-			PresentStateReg = XSdPs_ReadReg(InstancePtr->Config.BaseAddress,
-					XSDPS_PRES_STATE_OFFSET);
-			if ((PresentStateReg & XSDPS_PSR_CARD_INSRT_MASK) == 0x0U) {
-				Status = XST_FAILURE;
-				goto RETURN_PATH;
-			}
-		}
-	}
-
-	/* Set block size to 512 if not already set */
-	if( XSdPs_ReadReg(InstancePtr->Config.BaseAddress,
-			XSDPS_BLK_SIZE_OFFSET) != XSDPS_BLK_SIZE_512_MASK ) {
-		Status = XSdPs_SetBlkSize(InstancePtr,
-			XSDPS_BLK_SIZE_512_MASK);
-		if (Status != XST_SUCCESS) {
-			Status = XST_FAILURE;
-			goto RETURN_PATH;
-		}
-
-	}
-
-	if (InstancePtr->Dma64BitAddr >= ADDRESS_BEYOND_32BIT) {
-		XSdPs_SetupADMA2DescTbl64Bit(InstancePtr, BlkCnt);
-	} else {
-		XSdPs_SetupADMA2DescTbl(InstancePtr, BlkCnt, Buff);
-		if (InstancePtr->Config.IsCacheCoherent == 0U) {
-			Xil_DCacheFlushRange((INTPTR)Buff,
-				BlkCnt * XSDPS_BLK_SIZE_512_MASK);
-		}
-	}
-
-	if (BlkCnt == 1U) {
-		TransferMode = XSDPS_TM_BLK_CNT_EN_MASK | XSDPS_TM_DMA_EN_MASK;
-
-		/* Send single block write command */
-		Status = XSdPs_CmdTransfer(InstancePtr, CMD24, Arg, BlkCnt);
-		if (Status != XST_SUCCESS) {
-			Status = XST_FAILURE;
-			goto RETURN_PATH;
-		}
-	} else {
-		TransferMode = XSDPS_TM_AUTO_CMD12_EN_MASK |
-			XSDPS_TM_BLK_CNT_EN_MASK |
-			XSDPS_TM_MUL_SIN_BLK_SEL_MASK | XSDPS_TM_DMA_EN_MASK;
-
-		/* Send multiple blocks write command */
-		Status = XSdPs_CmdTransfer(InstancePtr, CMD25, Arg, BlkCnt);
-		if (Status != XST_SUCCESS) {
-			Status = XST_FAILURE;
-			goto RETURN_PATH;
-		}
-	}
-
-	/* Write to clear bit */
-	XSdPs_WriteReg16(InstancePtr->Config.BaseAddress,
-			XSDPS_NORM_INTR_STS_OFFSET, XSDPS_INTR_TC_MASK);
-
-	Status = XST_SUCCESS;
-
-	RETURN_PATH:
-		return Status;
-}
-
-//*****************************************************************************/
-///**
-//* This function performs SD read in polled mode.
-//*
-//* @param	InstancePtr is a pointer to the instance to be worked on.
-//* @param	Arg is the address passed by the user that is to be sent as
-//* 		argument along with the command.
-//* @param	BlkCnt - Block count passed by the user.
-//* @param	Buff - Pointer to the data buffer for a DMA transfer.
-//*
-//* @return
-//* 		- XST_SUCCESS if initialization was successful
-//* 		- XST_FAILURE if failure - could be because another transfer
-//* 		is in progress or command or data inhibit is set
-//*
-//******************************************************************************/
-s32 XSdPs_Read(XSdPs *InstancePtr, u32 Arg, u32 BlkCnt, u8 *Buff)
-{
-	s32 Status;
-	u32 PresentStateReg;
-	u32 StatusReg;
-
-	if ((InstancePtr->HC_Version != XSDPS_HC_SPEC_V3) ||
-				((InstancePtr->Host_Caps & XSDPS_CAPS_SLOT_TYPE_MASK)
-				!= XSDPS_CAPS_EMB_SLOT)) {
-		if(InstancePtr->Config.CardDetect != 0U) {
-			/* Check status to ensure card is initialized */
-			PresentStateReg = XSdPs_ReadReg(InstancePtr->Config.BaseAddress,
-					XSDPS_PRES_STATE_OFFSET);
-			if ((PresentStateReg & XSDPS_PSR_CARD_INSRT_MASK) == 0x0U) {
-				Status = XST_FAILURE;
-				goto RETURN_PATH;
-			}
-		}
-	}
-
-	/* Set block size to 512 if not already set */
-	if( XSdPs_ReadReg(InstancePtr->Config.BaseAddress,
-			XSDPS_BLK_SIZE_OFFSET) != XSDPS_BLK_SIZE_512_MASK ) {
-		Status = XSdPs_SetBlkSize(InstancePtr,
-			XSDPS_BLK_SIZE_512_MASK);
-		if (Status != XST_SUCCESS) {
-			Status = XST_FAILURE;
-			goto RETURN_PATH;
-		}
-	}
-
-	if (InstancePtr->Dma64BitAddr >= ADDRESS_BEYOND_32BIT) {
-		XSdPs_SetupADMA2DescTbl64Bit(InstancePtr, BlkCnt);
-	} else {
-		XSdPs_SetupADMA2DescTbl(InstancePtr, BlkCnt, Buff);
-		if (InstancePtr->Config.IsCacheCoherent == 0U) {
-			Xil_DCacheInvalidateRange((INTPTR)Buff,
-				BlkCnt * XSDPS_BLK_SIZE_512_MASK);
-		}
-	}
-
-	if (BlkCnt == 1U) {
-		TransferMode = XSDPS_TM_BLK_CNT_EN_MASK |
-			XSDPS_TM_DAT_DIR_SEL_MASK | XSDPS_TM_DMA_EN_MASK;
-
-		/* Send single block read command */
-		Status = XSdPs_CmdTransfer(InstancePtr, CMD17, Arg, BlkCnt);
-		if (Status != XST_SUCCESS) {
-			Status = XST_FAILURE;
-			goto RETURN_PATH;
-		}
-	} else {
-		TransferMode = XSDPS_TM_AUTO_CMD12_EN_MASK |
-			XSDPS_TM_BLK_CNT_EN_MASK | XSDPS_TM_DAT_DIR_SEL_MASK |
-			XSDPS_TM_DMA_EN_MASK | XSDPS_TM_MUL_SIN_BLK_SEL_MASK;
-
-		/* Send multiple blocks read command */
-		Status = XSdPs_CmdTransfer(InstancePtr, CMD18, Arg, BlkCnt);
-		if (Status != XST_SUCCESS) {
-			Status = XST_FAILURE;
-			goto RETURN_PATH;
-		}
-	}
-
-	/* Write to clear bit */
-	XSdPs_WriteReg16(InstancePtr->Config.BaseAddress,
-			XSDPS_NORM_INTR_STS_OFFSET, XSDPS_INTR_TC_MASK);
-
-	if (InstancePtr->Config.IsCacheCoherent == 0U) {
-		Xil_DCacheInvalidateRange((INTPTR)Buff,
-				BlkCnt * XSDPS_BLK_SIZE_512_MASK);
-	}
-
-	Status = XST_SUCCESS;
-
-RETURN_PATH:
-	return Status;
 }
